@@ -94,75 +94,76 @@ async function createSoloParentAccount(req, res, next) {
 
     //End Fam Composition
 
+    //Noet: Eto yung mga gagamitin for file uploads
     // Start handling file uploads
-    const fileUploadsData = [
-      {
-        fieldName: "voters",
-        objectName: "Voters_File__c",
-      },
-      {
-        fieldName: "barangayCert",
-        objectName: "Barangay_Certificate__c",
-      },
-      {
-        fieldName: "certOfEmployment",
-        objectName: "",
-      },
-      {
-        fieldName: "paySlip",
-        objectName: "",
-      },
-      {
-        fieldName: "nonFillingtr",
-        objectName: "",
-      },
-      {
-        fieldName: "businessPermit",
-        objectName: "",
-      },
-      {
-        fieldName: "affSoloParent",
-        objectName: "",
-      },
-      {
-        fieldName: "pwdid",
-        objectName: "",
-      },
-      {
-        fieldName: "deathcert",
-        objectName: "",
-      },
-      {
-        fieldName: "picture",
-        objectName: "",
-      },
-      // Add more entries for each file upload field
-    ];
+    // const fileUploadsData = [
+    //   {
+    //     fieldName: "voters",
+    //     objectName: "Voters_File__c",
+    //   },
+    //   {
+    //     fieldName: "barangayCert",
+    //     objectName: "Barangay_Certificate__c",
+    //   },
+    //   {
+    //     fieldName: "certOfEmployment",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "paySlip",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "nonFillingtr",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "businessPermit",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "affSoloParent",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "pwdid",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "deathcert",
+    //     objectName: "",
+    //   },
+    //   {
+    //     fieldName: "picture",
+    //     objectName: "",
+    //   },
+    //   // Add more entries for each file upload field
+    // ];
 
-    const fileUploadsRespArray = await Promise.all(
-      fileUploadsData.map(async ({ fieldName, objectName }) => {
-        const fileData = req.files[fieldName][0];
+    // const fileUploadsRespArray = await Promise.all(
+    //   fileUploadsData.map(async ({ fieldName, objectName }) => {
+    //     const fileData = req.files[fieldName][0];
 
-        const fileObjectData = {
-          Solo_Parent_Form__c: soloParentFormId,
-          FileName__c: fileData.originalname,
-          FileContent__c: fileData.buffer.toString("base64"),
-          // ... (other fields specific to this file upload)
-        };
+    //     const fileObjectData = {
+    //       Solo_Parent_Form__c: soloParentFormId,
+    //       FileName__c: fileData.originalname,
+    //       FileContent__c: fileData.buffer.toString("base64"),
+    //       // ... (other fields specific to this file upload)
+    //     };
 
-        return await conn.sobject(objectName).create(fileObjectData);
-      })
-    );
+    //     return await conn.sobject(objectName).create(fileObjectData);
+    //   })
+    // );
 
-    // Check if any of the file uploads failed
-    if (fileUploadsRespArray.some((resp) => !resp.success)) {
-      // Rollback: Delete the user account and associated file uploads
-      await conn
-        .sobject("Solo_Parent_Application_Form__c")
-        .destroy([soloParentFormId]);
-      res.status(500).send("Failed to process one or more file uploads");
-      return;
-    }
+    // // Check if any of the file uploads failed
+    // if (fileUploadsRespArray.some((resp) => !resp.success)) {
+    //   // Rollback: Delete the user account and associated file uploads
+    //   await conn
+    //     .sobject("Solo_Parent_Application_Form__c")
+    //     .destroy([soloParentFormId]);
+    //   res.status(500).send("Failed to process one or more file uploads");
+    //   return;
+    // }
     // End handling file uploads
 
     req.log.info(

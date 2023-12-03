@@ -42,26 +42,31 @@ app.get("/", (req, res) => {
   res.send("Force sent");
 });
 
-app.use("/api", (req, res, next) => {});
+// app.use("/api", (req, res, next) => {
+//   //middleware
+// });
 
 // Endpoint to create a user account
 app.post(
   "/api/create-solo-parent-account",
-  upload.fields([
-    { name: "voters", maxCount: 1 },
-    { name: "barangayCert", maxCount: 1 },
-    { name: "certOfEmployment", maxCount: 1 },
-    { name: "paySlip", maxCount: 1 },
-    { name: "nonFillingtr", maxCount: 1 },
-    { name: "businessPermit", maxCount: 1 },
-    { name: "affSoloParent", maxCount: 5 },
-    { name: "pbcc", maxCount: 1 },
-    { name: "pwdid", maxCount: 1 },
-    { name: "deathcert", maxCount: 1 },
-    { name: "picture", maxCount: 1 },
-  ]),
+
   createSoloParentAccount
 );
+
+//Note: Finalize ko pa yung upload file na field. di ko pa alam nangyayari dito haha
+// upload.fields([
+//   { name: "voters", maxCount: 1 },
+//   { name: "barangayCert", maxCount: 1 },
+//   { name: "certOfEmployment", maxCount: 1 },
+//   { name: "paySlip", maxCount: 1 },
+//   { name: "nonFillingtr", maxCount: 1 },
+//   { name: "businessPermit", maxCount: 1 },
+//   { name: "affSoloParent", maxCount: 5 },
+//   { name: "pbcc", maxCount: 1 },
+//   { name: "pwdid", maxCount: 1 },
+//   { name: "deathcert", maxCount: 1 },
+//   { name: "picture", maxCount: 1 },
+// ]),
 
 //Endpoint for getting user data by ID
 app.get("/api/read-solo-parent-account/:userId", async (req, res, next) => {
