@@ -16,7 +16,8 @@ conn.login(SF_USERNAME, SF_PASSWORD + SF_TOKEN, (err, userInfo) => {
 });
 
 async function createSoloParentAccount(req, res, next) {
-  const { personalInfo, familyComposition, fileUploadsData } = req.body;
+  const { personalInfo, familyComposition } = req.body;
+  const pdfFiles = req.files || {};
 
   try {
     //Start Basic Information
@@ -30,6 +31,7 @@ async function createSoloParentAccount(req, res, next) {
       Sex__c: personalInfo.sex,
       Age__c: personalInfo.age,
       Date_of_Birth__c: personalInfo.dateOfBirth,
+      birthday_string__c: personalInfo.dateOfBirthTwo,
       Place_of_Birth__c: personalInfo.placeOfBirth,
       Religion__c: personalInfo.religion,
       Mobile_Number__c: personalInfo.mobileNumber,
@@ -42,9 +44,11 @@ async function createSoloParentAccount(req, res, next) {
       Occupation__c: personalInfo.occupation,
       Monthly_Income__c: personalInfo.monthlyIncome,
       Name_of_Employer__c: personalInfo.nameOfEmployer,
-      Contact_Number_Employer__c: personalInfo.contactNumber,
+      Contact_Number_Employer__c: personalInfo.contactNumberEmployer,
       Employer_Address__c: personalInfo.employerAddress,
+      Contact_Person__c: personalInfo.contactPerson,
       Contact_Number_Contact_Person__c: personalInfo.contactNumber,
+      // Reasons_Circumstances__c: personalInfo.reasonsCircumstances,
     };
 
     const userAccountResp = await conn
@@ -94,77 +98,65 @@ async function createSoloParentAccount(req, res, next) {
 
     //End Fam Composition
 
-    //Noet: Eto yung mga gagamitin for file uploads
-    // Start handling file uploads
-    // const fileUploadsData = [
-    //   {
-    //     fieldName: "voters",
-    //     objectName: "Voters_File__c",
-    //   },
-    //   {
-    //     fieldName: "barangayCert",
-    //     objectName: "Barangay_Certificate__c",
-    //   },
-    //   {
-    //     fieldName: "certOfEmployment",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "paySlip",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "nonFillingtr",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "businessPermit",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "affSoloParent",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "pwdid",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "deathcert",
-    //     objectName: "",
-    //   },
-    //   {
-    //     fieldName: "picture",
-    //     objectName: "",
-    //   },
-    //   // Add more entries for each file upload field
-    // ];
+    // Step 3: Process the uploaded PDF files
+    const fileUploadsRespArray = await Promise.all(
+      Object.keys(pdfFiles).map(async (fieldName) => {
+        const fileData = pdfFiles[fieldName][0];
 
-    // const fileUploadsRespArray = await Promise.all(
-    //   fileUploadsData.map(async ({ fieldName, objectName }) => {
-    //     const fileData = req.files[fieldName][0];
+        const fileObjectData = {
+          PathOnClient: fileData.originalname,
+          VersionData: fileData.buffer.toString("base64"),
+          Title: fileData.originalname,
+          ParentId: soloParentFormId, // Link to Solo Parent Application Form
+          // ... (other fields specific to this file upload)
+        };
 
-    //     const fileObjectData = {
-    //       Solo_Parent_Form__c: soloParentFormId,
-    //       FileName__c: fileData.originalname,
-    //       FileContent__c: fileData.buffer.toString("base64"),
-    //       // ... (other fields specific to this file upload)
-    //     };
+        return await conn.sobject("ContentVersion").create(fileObjectData);
+      })
+    );
 
-    //     return await conn.sobject(objectName).create(fileObjectData);
-    //   })
-    // );
+    // Check if any of the file uploads failed
+    if (fileUploadsRespArray.some((resp) => !resp.success)) {
+      // Rollback: Delete the associated ContentVersions
+      const failedContentVersions = fileUploadsRespArray
+        .filter((resp) => !resp.success)
+        .map((resp) => resp.id);
 
-    // // Check if any of the file uploads failed
-    // if (fileUploadsRespArray.some((resp) => !resp.success)) {
-    //   // Rollback: Delete the user account and associated file uploads
-    //   await conn
-    //     .sobject("Solo_Parent_Application_Form__c")
-    //     .destroy([soloParentFormId]);
-    //   res.status(500).send("Failed to process one or more file uploads");
-    //   return;
-    // }
-    // End handling file uploads
+      await conn.sobject("ContentVersion").destroy(failedContentVersions);
+
+      return res.status(500).send("Failed to process one or more file uploads");
+    }
+
+    // Link the uploaded files to the Solo Parent Application Form
+    const contentDocumentLinkDataArray = fileUploadsRespArray.map((resp) => ({
+      ContentDocumentId: resp.id,
+      LinkedEntityId: soloParentFormId,
+      // ... (other fields specific to ContentDocumentLink)
+    }));
+
+    const contentDocumentLinkRespArray = await Promise.all(
+      contentDocumentLinkDataArray.map((linkData) =>
+        conn.sobject("ContentDocumentLink").create(linkData)
+      )
+    );
+
+    // Check if any of the ContentDocumentLinks failed
+    if (contentDocumentLinkRespArray.some((resp) => !resp.success)) {
+      // Rollback: Delete the associated ContentVersions and ContentDocumentLinks
+      const failedContentDocumentLinks = contentDocumentLinkRespArray
+        .filter((resp) => !resp.success)
+        .map((resp) => resp.id);
+
+      await conn
+        .sobject("ContentDocumentLink")
+        .destroy(failedContentDocumentLinks);
+
+      const failedContentVersions = fileUploadsRespArray.map((resp) => resp.id);
+      await conn.sobject("ContentVersion").destroy(failedContentVersions);
+
+      return res.status(500).send("Failed to link files to the record");
+    }
+    //end file upload
 
     req.log.info(
       "User account, family composition, and uploaded PDF files created successfully"
@@ -179,7 +171,7 @@ async function readSoloParentDataById(userId) {
   try {
     const query = `SELECT 
       Surname__c, Given_Name__c, Middle_Name__c, Extension__c, Civil_Status__c,
-      Sex__c, Age__c, Date_of_Birth__c, Place_of_Birth__c, Religion__c,
+      Sex__c, Age__c, Date_of_Birth__c, birthday_string__c, Place_of_Birth__c, Religion__c,
       Mobile_Number__c, Landline_Number__c, Present_Address__c,
       Highest_Educational_Attainment__c, Profession__c, Occupation__c,
       Monthly_Income__c, Name_of_Employer__c, Contact_Number_Employer__c,
@@ -237,6 +229,20 @@ async function deleteSoloParentData(userId) {
 
     // Check if the deletion was successful
     if (deletedRecords.length > 0 && deletedRecords[0].success) {
+      // Delete associated ContentDocumentLinks and ContentVersions
+      const contentDocumentLinks = await conn
+        .sobject("ContentDocumentLink")
+        .select("ContentDocumentId")
+        .where({ LinkedEntityId: userId })
+        .execute();
+
+      const contentDocumentIds = contentDocumentLinks.map(
+        (link) => link.ContentDocumentId
+      );
+
+      await conn.sobject("ContentDocumentLink").destroy(contentDocumentLinks);
+      await conn.sobject("ContentVersion").destroy(contentDocumentIds);
+
       console.log(`Successfully deleted user data with ID: ${userId}`);
       return true; // Deletion was successful
     } else {
@@ -269,6 +275,45 @@ async function updateSoloParentData(userId, updatedData) {
     throw error;
   }
 }
+
+async function userLogin(req, res) {
+  const { username, password } = req.body;
+
+  try {
+    // Query Salesforce to find the user with the provided username
+    const result = await conn.query(
+      `SELECT OwnerId FROM Account WHERE Name = '${username}' LIMIT 1`
+    );
+
+    if (result.totalSize === 1) {
+      // User found, check the provided password
+      const user = result.records[0];
+
+      if (user.Password__c != password) {
+        // Password is correct, return user information
+        res.json({
+          success: true,
+          message: "Login successful",
+          user: {
+            userId: user.OwnerId,
+
+            // Add more user details as needed
+          },
+        });
+      } else {
+        // Password is incorrect
+        res.status(401).json({ success: false, message: "Incorrect password" });
+      }
+    } else {
+      // User not found or invalid credentials
+      res.status(401).json({ success: false, message: "Invalid credentials" });
+    }
+  } catch (error) {
+    console.error("Error during login:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
 // Export the function
 module.exports = {
   createSoloParentAccount,
@@ -276,4 +321,5 @@ module.exports = {
   deleteSoloParentData,
   updateSoloParentData,
   readAllSoloParentData,
+  userLogin,
 };

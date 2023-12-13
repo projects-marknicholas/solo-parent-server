@@ -1,15 +1,18 @@
 const express = require("express");
+const fileUpload = require("express-fileupload");
 const bodyParser = require("body-parser");
+const multer = require("multer");
+const pino = require("pino");
+const expressPino = require("express-pino-logger");
+var cors = require("cors");
 const {
   createSoloParentAccount,
   readSoloParentDataById,
   deleteSoloParentData,
   updateSoloParentData,
   readAllSoloParentData,
+  userLogin,
 } = require("./api");
-const multer = require("multer");
-const pino = require("pino");
-const expressPino = require("express-pino-logger");
 
 const logger = pino();
 const expressLogger = expressPino({ logger });
@@ -32,9 +35,11 @@ const storage = multer.diskStorage({
 const { Pool } = require("pg");
 const upload = multer({ storage: storage });
 
+const PORT = 3001;
 const app = express();
 app.use(expressLogger);
-const PORT = 3001;
+app.use(cors());
+app.use(fileUpload());
 app.use(bodyParser.json());
 
 //Index Page
@@ -47,11 +52,16 @@ app.get("/", (req, res) => {
 // });
 
 // Endpoint to create a user account
-app.post(
-  "/api/create-solo-parent-account",
 
-  createSoloParentAccount
-);
+// Middleware for handling file uploads
+// app.use("/api/create-solo-parent-account", (req, res, next) => {
+//   if (!req.files || Object.keys(req.files).length === 0) {
+//     return res.status(400).send("No files were uploaded.");
+//   }
+//   next();
+// });
+
+app.post("/api/create-solo-parent-account", createSoloParentAccount);
 
 //Note: Finalize ko pa yung upload file na field. di ko pa alam nangyayari dito haha
 // upload.fields([
@@ -97,21 +107,25 @@ app.get("/api/read-all-solo-parent-data", async (req, res, next) => {
 });
 
 // Endpoint to delete user data by ID
-app.delete("/api/delete-solo-parent-account/:userId", async (req, res) => {
-  const userId = req.params.userId;
+app.delete(
+  "/api/delete-solo-parent-account/:userId",
+  async (req, res, next) => {
+    const userId = req.params.userId;
 
-  try {
-    const deleted = await deleteSoloParentData(userId);
-    if (!deleted) {
-      return res.status(404).json({ error: "User not found" });
+    try {
+      const deleted = await deleteSoloParentData(userId);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({ message: "User data deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting user data:", error);
+      res.status(500).send("Internal Server Error");
+      next(error);
     }
-
-    res.json({ message: "User data deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting user data:", error);
-    res.status(500).send("Internal Server Error");
   }
-});
+);
 
 // Endpoint to update user data
 app.put("/api/update-solo-parent-account/:userId", async (req, res, next) => {
@@ -129,6 +143,9 @@ app.put("/api/update-solo-parent-account/:userId", async (req, res, next) => {
     next(error);
   }
 });
+
+//Login
+app.post("/api/login", userLogin);
 
 app.listen(PORT, () => {
   logger.info(`Server is running on http://localhost:${PORT}`);
