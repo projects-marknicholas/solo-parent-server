@@ -17,10 +17,10 @@ conn.login(SF_USERNAME, SF_PASSWORD + SF_TOKEN, (err, userInfo) => {
 
 async function createSoloParentAccount(req, res, next) {
   const { personalInfo, familyComposition } = req.body;
-  const pdfFiles = req.files || {};
+  const fileDataArray = req.files || {};
 
   try {
-    //Start Basic Information
+    // Start Basic Information
     // Construct the data for creating a user account
     const userAccountData = {
       Surname__c: personalInfo.surName,
@@ -30,7 +30,7 @@ async function createSoloParentAccount(req, res, next) {
       Civil_Status__c: personalInfo.civilStatus,
       Sex__c: personalInfo.sex,
       Age__c: personalInfo.age,
-      Date_of_Birth__c: personalInfo.dateOfBirth,
+      // Date_of_Birth__c: personalInfo.dateOfBirth,
       birthday_string__c: personalInfo.dateOfBirthTwo,
       Place_of_Birth__c: personalInfo.placeOfBirth,
       Religion__c: personalInfo.religion,
@@ -99,10 +99,8 @@ async function createSoloParentAccount(req, res, next) {
     //End Fam Composition
 
     // Step 3: Process the uploaded PDF files
-    const fileUploadsRespArray = await Promise.all(
-      Object.keys(pdfFiles).map(async (fieldName) => {
-        const fileData = pdfFiles[fieldName][0];
-
+    if (fileDataArray && fileDataArray.length > 0) {
+      const fileUploadPromises = fileDataArray.map(async (fileData) => {
         const fileObjectData = {
           PathOnClient: fileData.originalname,
           VersionData: fileData.buffer.toString("base64"),
@@ -111,52 +109,41 @@ async function createSoloParentAccount(req, res, next) {
           // ... (other fields specific to this file upload)
         };
 
-        return await conn.sobject("ContentVersion").create(fileObjectData);
-      })
-    );
+        const fileUploadResp = await conn
+          .sobject("ContentVersion")
+          .create(fileObjectData);
 
-    // Check if any of the file uploads failed
-    if (fileUploadsRespArray.some((resp) => !resp.success)) {
-      // Rollback: Delete the associated ContentVersions
-      const failedContentVersions = fileUploadsRespArray
-        .filter((resp) => !resp.success)
-        .map((resp) => resp.id);
+        // Check if the file upload failed
+        if (!fileUploadResp.success) {
+          // Rollback: Delete the associated ContentVersion
+          await conn.sobject("ContentVersion").destroy(fileUploadResp.id);
+          throw new Error("Failed to process file upload");
+        }
 
-      await conn.sobject("ContentVersion").destroy(failedContentVersions);
+        // Link the uploaded file to the Solo Parent Application Form
+        const contentDocumentLinkResp = await conn
+          .sobject("ContentDocumentLink")
+          .create({
+            ContentDocumentId: fileUploadResp.id,
+            LinkedEntityId: soloParentFormId,
+            // ... (other fields specific to ContentDocumentLink)
+          });
 
-      return res.status(500).send("Failed to process one or more file uploads");
+        // Check if the ContentDocumentLink failed
+        if (!contentDocumentLinkResp.success) {
+          // Rollback: Delete the associated ContentVersion and ContentDocumentLink
+          await conn.sobject("ContentVersion").destroy(fileUploadResp.id);
+          await conn
+            .sobject("ContentDocumentLink")
+            .destroy(contentDocumentLinkResp.id);
+          throw new Error("Failed to link file to the record");
+        }
+      });
+
+      // Wait for all file upload and link operations to complete
+      await Promise.all(fileUploadPromises);
     }
-
-    // Link the uploaded files to the Solo Parent Application Form
-    const contentDocumentLinkDataArray = fileUploadsRespArray.map((resp) => ({
-      ContentDocumentId: resp.id,
-      LinkedEntityId: soloParentFormId,
-      // ... (other fields specific to ContentDocumentLink)
-    }));
-
-    const contentDocumentLinkRespArray = await Promise.all(
-      contentDocumentLinkDataArray.map((linkData) =>
-        conn.sobject("ContentDocumentLink").create(linkData)
-      )
-    );
-
-    // Check if any of the ContentDocumentLinks failed
-    if (contentDocumentLinkRespArray.some((resp) => !resp.success)) {
-      // Rollback: Delete the associated ContentVersions and ContentDocumentLinks
-      const failedContentDocumentLinks = contentDocumentLinkRespArray
-        .filter((resp) => !resp.success)
-        .map((resp) => resp.id);
-
-      await conn
-        .sobject("ContentDocumentLink")
-        .destroy(failedContentDocumentLinks);
-
-      const failedContentVersions = fileUploadsRespArray.map((resp) => resp.id);
-      await conn.sobject("ContentVersion").destroy(failedContentVersions);
-
-      return res.status(500).send("Failed to link files to the record");
-    }
-    //end file upload
+    // ... the rest of your logic
 
     req.log.info(
       "User account, family composition, and uploaded PDF files created successfully"
@@ -314,6 +301,66 @@ async function userLogin(req, res) {
   }
 }
 
+async function fetchUserTickets(ticketNumber) {
+  try {
+    // Query for cases related to the user
+    const cases = await conn.query(
+      `SELECT CreatedDate, CaseNumber, Type, Status, Description, ContactEmail FROM Case WHERE CaseNumber	 = '${ticketNumber}'`
+    );
+
+    return cases.records;
+  } catch (error) {
+    console.error("Error fetching cases:", error);
+    throw error;
+  }
+}
+
+async function createUserTickets(req, res, next) {
+  const { userId, type, description } = req.body;
+
+  try {
+    // Create a new case (ticket) for the user
+    const newCase = await conn.sobject("Case").create({
+      AccountId: userId, // Assuming ContactId is used to associate the case with a user
+      Type: type, // Type of the ticket
+      Description: description, // Description of the issue or concern
+    });
+
+    // Respond with the details of the newly created case, including the CaseNumber (ticket ID)
+    res.status(201).json({
+      createdDate: newCase.CreatedDate,
+      ticketId: newCase.CaseNumber,
+      type: newCase.Type,
+      status: newCase.Status,
+      description: newCase.Description,
+      contactEmail: newCase.ContactEmail,
+      // Include any other relevant information you want to return
+    }); // Respond with the newly created case
+  } catch (error) {
+    console.error("Error creating a new ticket:", error);
+    res.status(500).json({ error: "Failed to create a new ticket" });
+    next(e);
+  }
+}
+
+async function ticketNotif(res, req, next) {
+  const { username, applicationNumber } = req.body;
+
+  try {
+    // Logic to create or update the custom object record in Salesforce
+    // ...
+
+    res
+      .status(200)
+      .json({ success: true, message: "Notification sent successfully" });
+  } catch (error) {
+    console.error("Error sending notification:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to send notification" });
+    next(error);
+  }
+}
 // Export the function
 module.exports = {
   createSoloParentAccount,
@@ -322,4 +369,7 @@ module.exports = {
   updateSoloParentData,
   readAllSoloParentData,
   userLogin,
+  fetchUserTickets,
+  createUserTickets,
+  ticketNotif,
 };

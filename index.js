@@ -12,28 +12,21 @@ const {
   updateSoloParentData,
   readAllSoloParentData,
   userLogin,
+  fetchUserTickets,
+  createUserTickets,
+  ticketNotif,
 } = require("./api");
 
 const logger = pino();
 const expressLogger = expressPino({ logger });
 
-// Define storage for multer on disk
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    // Set the destination folder for uploaded files
-    cb(null, path.join(__dirname, "uploads")); // Adjust the folder path as needed
-  },
-  filename: function (req, file, cb) {
-    // Set the filename for uploaded files
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
-  },
+const storage = multer.memoryStorage(); // Use memory storage to store files in memory
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 const { Pool } = require("pg");
-const upload = multer({ storage: storage });
 
 const PORT = 3001;
 const app = express();
@@ -63,20 +56,11 @@ app.get("/", (req, res) => {
 
 app.post("/api/create-solo-parent-account", createSoloParentAccount);
 
-//Note: Finalize ko pa yung upload file na field. di ko pa alam nangyayari dito haha
-// upload.fields([
-//   { name: "voters", maxCount: 1 },
-//   { name: "barangayCert", maxCount: 1 },
-//   { name: "certOfEmployment", maxCount: 1 },
-//   { name: "paySlip", maxCount: 1 },
-//   { name: "nonFillingtr", maxCount: 1 },
-//   { name: "businessPermit", maxCount: 1 },
-//   { name: "affSoloParent", maxCount: 5 },
-//   { name: "pbcc", maxCount: 1 },
-//   { name: "pwdid", maxCount: 1 },
-//   { name: "deathcert", maxCount: 1 },
-//   { name: "picture", maxCount: 1 },
-// ]),
+app.post("/api/upload", function (req, res) {
+  console.log(req.files);
+  res.json(req.files);
+  res.send("UPLOADED!!!");
+});
 
 //Endpoint for getting user data by ID
 app.get("/api/read-solo-parent-account/:userId", async (req, res, next) => {
@@ -143,6 +127,27 @@ app.put("/api/update-solo-parent-account/:userId", async (req, res, next) => {
     next(error);
   }
 });
+
+app.get("/api/solo-parent/tickets/:ticketNumber", async (req, res, next) => {
+  const ticketNumber = req.params.ticketNumber;
+
+  try {
+    const userTickets = await fetchUserTickets(ticketNumber);
+
+    if (!userTickets) {
+      res.status(404).send("User not found");
+      return;
+    }
+
+    res.json(userTickets);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/solo-parent/create-user-ticket", createUserTickets);
+
+app.post("/api/solo-parent/ticket-notification", ticketNotif);
 
 //Login
 app.post("/api/login", userLogin);
