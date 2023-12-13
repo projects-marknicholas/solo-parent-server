@@ -289,7 +289,7 @@ async function userLogin(req, res) {
       // User found, check the provided password
       const user = result.records[0];
 
-      if (user.Password__c != password) {
+      if (user.Password__c === password) {
         // Password is correct, return user information
         res.json({
           success: true,
