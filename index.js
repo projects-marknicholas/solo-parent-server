@@ -14,6 +14,7 @@ const {
   userLogin,
   fetchUserTickets,
   createUserTickets,
+  fetchAllUserTickets,
   ticketNotif,
 } = require("./api");
 
@@ -53,14 +54,13 @@ app.get("/", (req, res) => {
 //   }
 //   next();
 // });
+//Login
+app.post("/api/login", userLogin);
+
+// Endpoint for creating user ticket
+app.post("/api/create-user-ticket", createUserTickets);
 
 app.post("/api/create-solo-parent-account", createSoloParentAccount);
-
-app.post("/api/upload", function (req, res) {
-  console.log(req.files);
-  res.json(req.files);
-  res.send("UPLOADED!!!");
-});
 
 //Endpoint for getting user data by ID
 app.get("/api/read-solo-parent-account/:userId", async (req, res, next) => {
@@ -75,6 +75,24 @@ app.get("/api/read-solo-parent-account/:userId", async (req, res, next) => {
     }
 
     res.json(userData);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Endpoint for fetching tickets based on the user id
+app.get("/api/read-user-ticket/:userId", async (req, res, next) => {
+  const userId = req.params.userId;
+
+  try {
+    const userTickets = await fetchAllUserTickets(userId);
+
+    if (!userTickets) {
+      res.status(404).send("Tickets not found");
+      return;
+    }
+
+    res.json(userTickets);
   } catch (error) {
     next(error);
   }
@@ -128,29 +146,9 @@ app.put("/api/update-solo-parent-account/:userId", async (req, res, next) => {
   }
 });
 
-app.get("/api/solo-parent/tickets/:ticketNumber", async (req, res, next) => {
-  const ticketNumber = req.params.ticketNumber;
-
-  try {
-    const userTickets = await fetchUserTickets(ticketNumber);
-
-    if (!userTickets) {
-      res.status(404).send("User not found");
-      return;
-    }
-
-    res.json(userTickets);
-  } catch (error) {
-    next(error);
-  }
-});
-
 app.post("/api/solo-parent/create-user-ticket", createUserTickets);
 
 app.post("/api/solo-parent/ticket-notification", ticketNotif);
-
-//Login
-app.post("/api/login", userLogin);
 
 app.listen(PORT, () => {
   logger.info(`Server is running on http://localhost:${PORT}`);
